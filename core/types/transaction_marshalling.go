@@ -356,3 +356,86 @@ func (tx *DynamicFeeTransaction) UnmarshalJSON(input []byte) error {
 	}
 	return nil
 }
+
+func (tx *StarknetTransaction) UnmarshalJSON(input []byte) error {
+	var dec txJSON
+	if err := json.Unmarshal(input, &dec); err != nil {
+		return err
+	}
+	// Access list is optional for now.
+	if dec.AccessList != nil {
+		tx.AccessList = *dec.AccessList
+	}
+	if dec.ChainID == nil {
+		return errors.New("missing required field 'chainId' in transaction")
+	}
+	var overflow bool
+	tx.ChainID, overflow = uint256.FromBig(dec.ChainID.ToInt())
+	if overflow {
+		return errors.New("'chainId' in transaction does not fit in 256 bits")
+	}
+	if dec.To != nil {
+		tx.To = dec.To
+	}
+	if dec.Nonce == nil {
+		return errors.New("missing required field 'nonce' in transaction")
+	}
+	tx.Nonce = uint64(*dec.Nonce)
+	if dec.GasPrice == nil {
+		return errors.New("missing required field 'gasPrice' in transaction")
+	}
+	tx.Tip, overflow = uint256.FromBig(dec.Tip.ToInt())
+	if overflow {
+		return errors.New("'tip' in transaction does not fit in 256 bits")
+	}
+	tx.FeeCap, overflow = uint256.FromBig(dec.FeeCap.ToInt())
+	if overflow {
+		return errors.New("'feeCap' in transaction does not fit in 256 bits")
+	}
+	if dec.Gas == nil {
+		return errors.New("missing required field 'gas' in transaction")
+	}
+	tx.Gas = uint64(*dec.Gas)
+	if dec.Value == nil {
+		return errors.New("missing required field 'value' in transaction")
+	}
+	tx.Value, overflow = uint256.FromBig(dec.Value.ToInt())
+	if overflow {
+		return errors.New("'value' in transaction does not fit in 256 bits")
+	}
+	if dec.Data == nil {
+		return errors.New("missing required field 'input' in transaction")
+	}
+	tx.Data = *dec.Data
+	if dec.V == nil {
+		return errors.New("missing required field 'v' in transaction")
+	}
+	overflow = tx.V.SetFromBig(dec.V.ToInt())
+	if overflow {
+		return fmt.Errorf("dec.V higher than 2^256-1")
+	}
+	if dec.R == nil {
+		return errors.New("missing required field 'r' in transaction")
+	}
+	overflow = tx.R.SetFromBig(dec.R.ToInt())
+	if overflow {
+		return fmt.Errorf("dec.R higher than 2^256-1")
+	}
+	if dec.S == nil {
+		return errors.New("missing required field 's' in transaction")
+	}
+	overflow = tx.S.SetFromBig(dec.S.ToInt())
+	if overflow {
+		return fmt.Errorf("dec.S higher than 2^256-1")
+	}
+	if overflow {
+		return errors.New("'s' in transaction does not fit in 256 bits")
+	}
+	withSignature := !tx.V.IsZero() || !tx.R.IsZero() || !tx.S.IsZero()
+	if withSignature {
+		if err := sanityCheckSignature(&tx.V, &tx.R, &tx.S, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}

@@ -72,6 +72,7 @@ type Transaction interface {
 	Protected() bool
 	RawSignatureValues() (*uint256.Int, *uint256.Int, *uint256.Int)
 	MarshalBinary(w io.Writer) error
+	UnmarshalJSON([]byte) error
 	// Sender returns the address derived from the signature (V, R, S) using secp256k1
 	// elliptic curve and an error if it failed deriving or upon an incorrect
 	// signature.
