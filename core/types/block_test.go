@@ -318,7 +318,6 @@ func TestUnmarshalBlock(t *testing.T) {
 	// whether it was declared or unmarshaled. Specifically the nat field will be nil for a
 	// big.Int{} but it will be a zero value for an unmarshaled zero hexutil.Big.
 	check("headers equal", newBlock.header, originalBlock.header)
-	check("uncles equal", newBlock.uncles, originalBlock.uncles)
 	check("transactions equal", newBlock.transactions, originalBlock.transactions)
 	check("hashes equal", newBlock.hash, originalBlock.hash)
 	check("sizes equal", newBlock.size, originalBlock.size)
