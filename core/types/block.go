@@ -19,6 +19,7 @@ package types
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -668,6 +669,127 @@ type Block struct {
 // new, after which it should be deleted. Do not use!
 func (b *Block) DeprecatedTd() *big.Int {
 	return b.td
+}
+
+// headerJSON is the JSON representation of a header.
+type headerJSON struct {
+	BaseFee     *hexutil.Big    `json:"baseFeePerGas"`
+	Difficulty  *hexutil.Big    `json:"difficulty"`
+	Extra       *hexutil.Bytes  `json:"extraData"`
+	GasLimit    *hexutil.Uint64 `json:"gasLimit"`
+	GasUsed     *hexutil.Uint64 `json:"gasUsed"`
+	Bloom       Bloom           `json:"logsBloom"`
+	Miner       common.Address  `json:"miner"`
+	MixDigest   common.Hash     `json:"mixHash"`
+	Nonce       BlockNonce      `json:"nonce"`
+	Number      *hexutil.Big    `json:"number"`
+	ParentHash  common.Hash     `json:"parentHash"`
+	ReceiptHash common.Hash     `json:"receiptsRoot"`
+	Sha3Uncles  common.Hash     `json:"sha3Uncles"`
+	Root        common.Hash     `json:"stateRoot"`
+	TxHash      common.Hash     `json:"transactionsRoot"`
+	Time        *hexutil.Uint64 `json:"timestamp"`
+}
+
+// blockJSON is the JSON representation of blocks.
+type blockJSON struct {
+	headerJSON
+	TotalDifficulty *hexutil.Big  `json:"totalDifficulty"`
+	Hash            common.Hash   `json:"hash"`
+	Transactions    Transactions  `json:"transactions"`
+	Uncles          []*headerJSON `json:"uncles"`
+}
+
+func (b *Block) MarshalJSON() ([]byte, error) {
+	var enc blockJSON
+
+	// Header.
+	enc.headerJSON.BaseFee = (*hexutil.Big)(b.BaseFee())
+	enc.headerJSON.Difficulty = (*hexutil.Big)(b.Difficulty())
+	extra := b.Extra()
+	enc.headerJSON.Extra = (*hexutil.Bytes)(&extra)
+	gasLimit := b.GasLimit()
+	enc.headerJSON.GasLimit = (*hexutil.Uint64)(&gasLimit)
+	gasUsed := b.GasUsed()
+	enc.headerJSON.GasUsed = (*hexutil.Uint64)(&gasUsed)
+	enc.headerJSON.Bloom = b.Bloom()
+	enc.headerJSON.Miner = b.Coinbase()
+	enc.headerJSON.MixDigest = b.MixDigest()
+	enc.headerJSON.Nonce = b.Nonce()
+	enc.headerJSON.Number = (*hexutil.Big)(b.Number())
+	enc.headerJSON.ParentHash = b.ParentHash()
+	enc.headerJSON.ReceiptHash = b.ReceiptHash()
+	enc.headerJSON.Sha3Uncles = b.UncleHash()
+	enc.headerJSON.Root = b.Root()
+	t := b.Time()
+	enc.headerJSON.Time = (*hexutil.Uint64)(&t)
+	enc.headerJSON.TxHash = b.TxHash()
+
+	// Other fields.
+	enc.TotalDifficulty = (*hexutil.Big)(b.td)
+	enc.Hash = b.Hash()
+	enc.Transactions = b.Transactions()
+	enc.Uncles = make([]*headerJSON, len(b.uncles))
+
+	for i, uncle := range b.uncles {
+		enc.Uncles[i] = &headerJSON{
+			BaseFee:     (*hexutil.Big)(uncle.BaseFee),
+			Difficulty:  (*hexutil.Big)(uncle.Difficulty),
+			Extra:       (*hexutil.Bytes)(&uncle.Extra),
+			GasLimit:    (*hexutil.Uint64)(&uncle.GasLimit),
+			GasUsed:     (*hexutil.Uint64)(&uncle.GasUsed),
+			Bloom:       uncle.Bloom,
+			Miner:       uncle.Coinbase,
+			MixDigest:   uncle.MixDigest,
+			Nonce:       uncle.Nonce,
+			Number:      (*hexutil.Big)(uncle.Number),
+			ParentHash:  uncle.ParentHash,
+			ReceiptHash: uncle.ReceiptHash,
+			Sha3Uncles:  uncle.UncleHash,
+			Root:        uncle.Root,
+			Time:        (*hexutil.Uint64)(&uncle.Time),
+		}
+	}
+
+	return json.Marshal(&enc)
+}
+
+func headerJSONToHeader(hj headerJSON) *Header {
+	return &Header{
+		ParentHash:  hj.ParentHash,
+		UncleHash:   hj.Sha3Uncles,
+		Coinbase:    hj.Miner,
+		Root:        hj.Root,
+		TxHash:      hj.TxHash,
+		ReceiptHash: hj.ReceiptHash,
+		Bloom:       hj.Bloom,
+		Difficulty:  hj.Difficulty.ToInt(),
+		Number:      hj.Number.ToInt(),
+		GasLimit:    uint64(*hj.GasLimit),
+		GasUsed:     uint64(*hj.GasUsed),
+		Time:        uint64(*hj.Time),
+		Extra:       ([]byte)(*hj.Extra),
+		MixDigest:   hj.MixDigest,
+		Nonce:       hj.Nonce,
+		BaseFee:     hj.BaseFee.ToInt(),
+	}
+}
+
+func (b *Block) UnmarshalJSON(data []byte) error {
+	var blockJSON *blockJSON
+	if err := json.Unmarshal(data, &blockJSON); err != nil {
+		return fmt.Errorf("failed unmarshaling data into blockJSON type: %w", err)
+	}
+	b.header = headerJSONToHeader(blockJSON.headerJSON)
+	b.uncles = make([]*Header, len(blockJSON.Uncles))
+
+	for i, hj := range blockJSON.Uncles {
+		b.uncles[i] = headerJSONToHeader(*hj)
+	}
+	b.transactions = blockJSON.Transactions
+	b.td = (*big.Int)(blockJSON.TotalDifficulty)
+
+	return nil
 }
 
 // [deprecated by eth/63]

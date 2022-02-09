@@ -19,6 +19,7 @@ package types
 import (
 	"bytes"
 	"container/heap"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -72,7 +73,6 @@ type Transaction interface {
 	Protected() bool
 	RawSignatureValues() (*uint256.Int, *uint256.Int, *uint256.Int)
 	MarshalBinary(w io.Writer) error
-	UnmarshalJSON([]byte) error
 	// Sender returns the address derived from the signature (V, R, S) using secp256k1
 	// elliptic curve and an error if it failed deriving or upon an incorrect
 	// signature.
@@ -254,6 +254,24 @@ func (s Transactions) EncodeIndex(i int, w *bytes.Buffer) {
 	if err := s[i].MarshalBinary(w); err != nil {
 		panic(err)
 	}
+}
+
+func (s *Transactions) UnmarshalJSON(data []byte) error {
+	var rawMsgs []json.RawMessage
+	err := json.Unmarshal(data, &rawMsgs)
+	if err != nil {
+		return fmt.Errorf("could not unmarshal into slice of json.RawMessages: %w", err)
+	}
+
+	*s = make([]Transaction, len(rawMsgs))
+	for i, msg := range rawMsgs {
+		tx, err := UnmarshalTransactionFromJSON(msg)
+		if err != nil {
+			return fmt.Errorf("could not unmarshal msg into Transaction: %w", err)
+		}
+		(*s)[i] = tx
+	}
+	return nil
 }
 
 // TransactionsGroupedBySender - lists of transactions grouped by sender

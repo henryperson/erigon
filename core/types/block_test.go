@@ -18,9 +18,11 @@ package types
 
 import (
 	"bytes"
+	"encoding/json"
 	"math/big"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/holiman/uint256"
 
@@ -267,4 +269,60 @@ func makeBenchBlock() *Block {
 		}
 	}
 	return NewBlock(header, txs, uncles, receipts)
+}
+
+func TestUnmarshalBlock(t *testing.T) {
+	check := func(f string, got, want interface{}) {
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s mismatch: got %+v, want %+v", f, got, want)
+		}
+	}
+
+	var fakeHeader *Header = &Header{
+		ParentHash:  common.BytesToHash([]byte("ParentHash")),
+		UncleHash:   common.BytesToHash([]byte("UncleHash")),
+		Coinbase:    common.BytesToAddress([]byte("Coinbase")),
+		Root:        common.BytesToHash([]byte("Root")),
+		TxHash:      common.Hash{},
+		ReceiptHash: common.BytesToHash([]byte("ReceiptHash")),
+		Bloom:       BytesToBloom([]byte("Bloom")),
+		Difficulty:  big.NewInt(1),
+		Number:      big.NewInt(2),
+		GasLimit:    3,
+		GasUsed:     4,
+		Time:        uint64(2 * time.Hour),
+		Extra:       []byte("Extra"),
+		MixDigest:   common.BytesToHash([]byte("MixDigest")),
+		Nonce:       [8]byte{1, 2, 3, 4, 5, 6, 7, 8},
+		BaseFee:     big.NewInt(6),
+	}
+	fakeTx := NewTransaction(1, common.BytesToAddress([]byte("to")), uint256.NewInt(2), 3, uint256.NewInt(4), []byte("fake data"))
+	fakeReceipt := NewReceipt(false, 100)
+
+	originalBlock := NewBlock(fakeHeader, []Transaction{fakeTx, fakeTx}, []*Header{fakeHeader}, []*Receipt{fakeReceipt})
+	data, err := json.Marshal(&originalBlock)
+	if err != nil {
+		t.Fatalf("error on marshal: %v", err)
+	}
+
+	var newBlock *Block
+	err = json.Unmarshal(data, &newBlock)
+	if err != nil {
+		t.Fatalf("error on unmarshal: %v", err)
+	}
+	// Force hash to calculate itself for the purpose of the test.
+	newBlock.Hash()
+
+	// We check each field individually in order to correctly test total difficulty. Because of the
+	// way hexutil.Big unmarshals, the subfields of a zero big.Int will be different depending on
+	// whether it was declared or unmarshaled. Specifically the nat field will be nil for a
+	// big.Int{} but it will be a zero value for an unmarshaled zero hexutil.Big.
+	check("headers equal", newBlock.header, originalBlock.header)
+	check("uncles equal", newBlock.uncles, originalBlock.uncles)
+	check("transactions equal", newBlock.transactions, originalBlock.transactions)
+	check("hashes equal", newBlock.hash, originalBlock.hash)
+	check("sizes equal", newBlock.size, originalBlock.size)
+	check("tds equal", newBlock.td.Uint64(), originalBlock.td.Uint64())
+	check("ReceivedAt equal", newBlock.ReceivedAt, originalBlock.ReceivedAt)
+	check("ReceivedFrom equal", newBlock.ReceivedFrom, originalBlock.ReceivedFrom)
 }
